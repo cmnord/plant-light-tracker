@@ -9,33 +9,65 @@ const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
 const int LIGHT_THRESHOLD = 100;
 
+unsigned long t_received;
+unsigned long t_last_sun;
 int photocellReading;
+
+const int STATE_IDLE = 0;
+const int STATE_COUNTING = 1;
+int state;
 
 void setup() {
   delay(3000);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   oled.begin();
   Serial.begin(115200);
+  state = STATE_IDLE;
 }
 
 void loop() {
   oled.clearBuffer();
-  drawScreen();
   photocellReading = analogRead(PHOTOCELL_PIN);
-  drawBar(photocellReading);
+  switch (state) {
+    case STATE_IDLE:
+      if (photocellReading > LIGHT_THRESHOLD) {
+        t_last_sun = millis();
+        state = STATE_COUNTING;
+        Serial.println("Starting to count sun");
+      }
+      break;
+    case STATE_COUNTING:
+      unsigned long delta_sun = millis() - t_last_sun;
+      t_received += delta_sun;
+      t_last_sun = millis();
+      if (photocellReading < LIGHT_THRESHOLD) {
+        Serial.println("It got dark");
+        state = STATE_IDLE;
+      }
+      break;
+  }
+  drawHeader();
+  drawBody();
+  drawFooter(photocellReading);
 
   oled.sendBuffer();
 }
 
-void drawScreen() {
+void drawHeader() {
   oled.setFont(u8g2_font_t0_15_tr);
   oled.drawStr(0, 15, "Plant monitor");
-
   oled.setFont(u8g2_font_unifont_t_symbols);
-  oled.drawGlyph(107, 15, 0x2618);
+  oled.drawGlyph(107, 15, 0x2618); // clover
 }
 
-void drawBar(int reading) {
+void drawBody() {
+  oled.setFont(u8g2_font_t0_11_tr);
+  char message[40];
+  snprintf(message, 40, "Today's sun: %d ms", int(t_received));
+  oled.drawStr(0, 30, message);
+}
+
+void drawFooter(int reading) {
   int padding = 0;
   int glyph_width = 10;
 
@@ -48,7 +80,7 @@ void drawBar(int reading) {
   int bar_scaled_width = map(reading, 0, 400, 0, bar_width);
 
   int symbol;
-  if (reading > LIGHT_THRESHOLD) {
+  if (state == STATE_COUNTING) {
     symbol = 0x2600;
   }
   else {
