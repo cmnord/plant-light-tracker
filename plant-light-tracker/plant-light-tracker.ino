@@ -4,17 +4,19 @@
 
 // constants
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, 19, 18);
-const int BUTTON_PIN = 3;
-const int PHOTOCELL_PIN = 23;
+const int BUTTON_PIN = 11;
+const int PHOTOCELL_PIN = 14;
 const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
-
-const int LIGHT_THRESHOLD = 100;
+const int LIGHT_THRESHOLD = 800;
+const int BUFFER_SIZE = 30;
 
 time_t t_received;
 time_t t_last_light;
-int photocellReading;
-int buttonReading;
+int photocell_reads[BUFFER_SIZE];
+int avg_photocell_reading;
+int read_index = 0;
+int button_reading;
 
 const int STATE_IDLE = 0;
 const int STATE_COUNTING = 1;
@@ -33,27 +35,32 @@ void setup() {
   Serial.begin(115200);
   light_state = STATE_IDLE;
   screen_state = SCREEN_ON;
+  avg_photocell_reading = 0;
 }
 
 void loop() {
   oled.clearBuffer();
-  photocellReading = analogRead(PHOTOCELL_PIN);
-  buttonReading = digitalRead(BUTTON_PIN);
+  avg_photocell_reading = averaging_filter(
+                            analogRead(PHOTOCELL_PIN),
+                            photocell_reads,
+                            8,
+                            read_index
+                          );
+  Serial.println(avg_photocell_reading);
+  button_reading = digitalRead(BUTTON_PIN);
 
   switch (light_state) {
     case STATE_IDLE:
-      if (photocellReading > LIGHT_THRESHOLD) {
+      if (avg_photocell_reading > LIGHT_THRESHOLD) {
         t_last_light = now();
         light_state = STATE_COUNTING;
-        Serial.println("Starting to count light");
       }
       break;
     case STATE_COUNTING:
       unsigned long delta_light = now() - t_last_light;
       t_received += delta_light;
       t_last_light = now();
-      if (photocellReading < LIGHT_THRESHOLD) {
-        Serial.println("It got dark");
+      if (avg_photocell_reading < LIGHT_THRESHOLD) {
         light_state = STATE_IDLE;
       }
       break;
@@ -61,23 +68,23 @@ void loop() {
 
   switch (screen_state) {
     case SCREEN_ON:
-      if (!buttonReading) {
+      if (!button_reading) {
         screen_state = SCREEN_ON_BUTTON_PUSHED;
       }
       break;
     case SCREEN_ON_BUTTON_PUSHED:
-      if (buttonReading) {
+      if (button_reading) {
         oled.setPowerSave(1);
         screen_state = SCREEN_OFF;
       }
       break;
     case SCREEN_OFF:
-      if (!buttonReading) {
+      if (!button_reading) {
         screen_state = SCREEN_OFF_BUTTON_PUSHED;
       }
       break;
     case SCREEN_OFF_BUTTON_PUSHED:
-      if (buttonReading) {
+      if (button_reading) {
         oled.setPowerSave(0);
         screen_state = SCREEN_ON;
       }
@@ -86,7 +93,7 @@ void loop() {
 
   drawHeader();
   drawBody();
-  drawFooter(photocellReading);
+  drawFooter(avg_photocell_reading);
 
   oled.sendBuffer();
 }
@@ -109,6 +116,26 @@ void drawBody() {
   oled.drawStr(0, 30, message);
 }
 
+/**
+ * Averaging filter from 6.08!
+ * https://iesc-s2.mit.edu/608/spring18
+ */
+int averaging_filter(int input, int stored_values[BUFFER_SIZE], int order, int &index) {
+  stored_values[index] = input;
+  int out = 0;
+  float multiplier = 1.0 / (order + 1);
+  if (order == 0) {
+    out = input;
+  } else {
+    for (int i = 0; i <= order; i++) {
+      out += stored_values[i];
+    }
+    index += 1;
+    index %= (order + 1);
+  }
+  return multiplier * out;
+}
+
 void drawFooter(int reading) {
   int padding = 0;
   int glyph_width = 10;
@@ -119,7 +146,7 @@ void drawFooter(int reading) {
   int bar_y = SCREEN_HEIGHT - bar_height - padding;
   int glyph_x = padding;
   int glyph_y = SCREEN_HEIGHT - padding;
-  int bar_scaled_width = map(reading, 0, 400, 0, bar_width);
+  int bar_scaled_width = map(reading, 210, 1023, 0, bar_width);
 
   int symbol;
   if (light_state == STATE_COUNTING) {
