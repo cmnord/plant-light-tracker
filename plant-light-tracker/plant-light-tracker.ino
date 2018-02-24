@@ -12,42 +12,78 @@ const int SCREEN_HEIGHT = 64;
 const int LIGHT_THRESHOLD = 100;
 
 time_t t_received;
-time_t t_last_sun;
+time_t t_last_light;
 int photocellReading;
+int buttonReading;
 
 const int STATE_IDLE = 0;
 const int STATE_COUNTING = 1;
-int state;
+int light_state;
+
+const int SCREEN_OFF = 0;
+const int SCREEN_ON = 1;
+const int SCREEN_OFF_BUTTON_PUSHED = 2;
+const int SCREEN_ON_BUTTON_PUSHED = 3;
+int screen_state;
 
 void setup() {
   delay(3000);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   oled.begin();
   Serial.begin(115200);
-  state = STATE_IDLE;
+  light_state = STATE_IDLE;
+  screen_state = SCREEN_ON;
 }
 
 void loop() {
   oled.clearBuffer();
   photocellReading = analogRead(PHOTOCELL_PIN);
-  switch (state) {
+  buttonReading = digitalRead(BUTTON_PIN);
+
+  switch (light_state) {
     case STATE_IDLE:
       if (photocellReading > LIGHT_THRESHOLD) {
-        t_last_sun = now();
-        state = STATE_COUNTING;
-        Serial.println("Starting to count sun");
+        t_last_light = now();
+        light_state = STATE_COUNTING;
+        Serial.println("Starting to count light");
       }
       break;
     case STATE_COUNTING:
-      unsigned long delta_sun = now() - t_last_sun;
-      t_received += delta_sun;
-      t_last_sun = now();
+      unsigned long delta_light = now() - t_last_light;
+      t_received += delta_light;
+      t_last_light = now();
       if (photocellReading < LIGHT_THRESHOLD) {
         Serial.println("It got dark");
-        state = STATE_IDLE;
+        light_state = STATE_IDLE;
       }
       break;
   }
+
+  switch (screen_state) {
+    case SCREEN_ON:
+      if (!buttonReading) {
+        screen_state = SCREEN_ON_BUTTON_PUSHED;
+      }
+      break;
+    case SCREEN_ON_BUTTON_PUSHED:
+      if (buttonReading) {
+        oled.setPowerSave(1);
+        screen_state = SCREEN_OFF;
+      }
+      break;
+    case SCREEN_OFF:
+      if (!buttonReading) {
+        screen_state = SCREEN_OFF_BUTTON_PUSHED;
+      }
+      break;
+    case SCREEN_OFF_BUTTON_PUSHED:
+      if (buttonReading) {
+        oled.setPowerSave(0);
+        screen_state = SCREEN_ON;
+      }
+      break;
+  }
+
   drawHeader();
   drawBody();
   drawFooter(photocellReading);
@@ -86,7 +122,7 @@ void drawFooter(int reading) {
   int bar_scaled_width = map(reading, 0, 400, 0, bar_width);
 
   int symbol;
-  if (state == STATE_COUNTING) {
+  if (light_state == STATE_COUNTING) {
     symbol = 0x2600;
   }
   else {
