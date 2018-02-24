@@ -1,4 +1,5 @@
 #include <U8g2lib.h>
+#include <Time.h>
 #define DELAY 1000
 
 // constants
@@ -7,10 +8,11 @@ const int BUTTON_PIN = 3;
 const int PHOTOCELL_PIN = 23;
 const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
+
 const int LIGHT_THRESHOLD = 100;
 
-unsigned long t_received;
-unsigned long t_last_sun;
+time_t t_received;
+time_t t_last_sun;
 int photocellReading;
 
 const int STATE_IDLE = 0;
@@ -31,15 +33,15 @@ void loop() {
   switch (state) {
     case STATE_IDLE:
       if (photocellReading > LIGHT_THRESHOLD) {
-        t_last_sun = millis();
+        t_last_sun = now();
         state = STATE_COUNTING;
         Serial.println("Starting to count sun");
       }
       break;
     case STATE_COUNTING:
-      unsigned long delta_sun = millis() - t_last_sun;
+      unsigned long delta_sun = now() - t_last_sun;
       t_received += delta_sun;
-      t_last_sun = millis();
+      t_last_sun = now();
       if (photocellReading < LIGHT_THRESHOLD) {
         Serial.println("It got dark");
         state = STATE_IDLE;
@@ -63,7 +65,11 @@ void drawHeader() {
 void drawBody() {
   oled.setFont(u8g2_font_t0_11_tr);
   char message[40];
-  snprintf(message, 40, "Today's sun: %d ms", int(t_received));
+  snprintf(message, 40, "Today's sun: %02d:%02d:%02d",
+           hour(t_received),
+           minute(t_received),
+           second(t_received)
+          );
   oled.drawStr(0, 30, message);
 }
 
@@ -87,6 +93,7 @@ void drawFooter(int reading) {
     symbol = 0x2601;
   }
 
+  oled.setFont(u8g2_font_unifont_t_symbols);
   oled.drawGlyph(glyph_x, glyph_y, symbol);
   oled.drawFrame(bar_x, bar_y, bar_width, bar_height);
   oled.drawBox(bar_x, bar_y, bar_scaled_width, bar_height);

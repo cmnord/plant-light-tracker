@@ -11,8 +11,10 @@ Track how much light your plants receive each day!
 
 - [Teensyduino][teensyduino]
 - [u8g2][u8g2] graphics library
+- [Time][time] library
 
 [oled]: http://www.diymalls.com/OLED/0.96-blue-and-yellow-oled-display
 [teensy]: https://www.pjrc.com/store/teensy32.html
 [teensyduino]: https://www.pjrc.com/teensy/td_download.html
 [u8g2]: https://github.com/olikraus/u8g2
+[time]: https://github.com/PaulStoffregen/Time
