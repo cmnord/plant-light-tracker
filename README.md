@@ -1,4 +1,4 @@
-# plant-light-tracker
+# Plant Light Tracker
 
 Track how much light your plants receive each day! The system keeps track of the
 total amount of time each day that the photocell records light above a certain
@@ -6,6 +6,8 @@ threshold.  The screen shows a friendly dashboard with today's sunlight and the
 current brightness level.
 
 Made for [MakeMIT][makemit] 2018.
+
+![](https://raw.githubusercontent.com/cmnord/plant-light-tracker/master/media/photo.jpg)
 
 # Hardware
 
