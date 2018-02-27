@@ -11,7 +11,7 @@ const int BUTTON_PIN = 2;
 const int PHOTOCELL_PIN = A0;
 const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
-const int LIGHT_MIN = 350;
+const int LIGHT_MIN = 0;
 const int LIGHT_THRESHOLD = 600;
 const int LIGHT_MAX = 800;
 const int BUFFER_SIZE = 30;
@@ -22,6 +22,7 @@ const int response_timeout = 6000;
 const String LOCATION = "America/New_York";
 const int MIN_BETWEEN_FETCHES = 60;
 time_t t_last_fetch;
+time_t today;
 const int WIFI_STATE_IDLE = 0;
 const int WIFI_STATE_FETCHING = 1;
 int wifi_state = WIFI_STATE_FETCHING;
@@ -106,6 +107,12 @@ void loop() {
   switch (wifi_state) {
     case WIFI_STATE_IDLE:
       if (minute(now() - t_last_fetch) > MIN_BETWEEN_FETCHES) {
+        wifi_state = WIFI_STATE_FETCHING;
+      }
+      if (day(now()) != day(today)) {
+        // reset amount of light received around midnight
+        Serial.println("It's a new day...");
+        t_received = 0;
         wifi_state = WIFI_STATE_FETCHING;
       }
       break;
@@ -196,7 +203,7 @@ void setup_wifi() {
   int count = 0;
   WiFi.disconnect();
   WiFi.begin(MY_SSID, MY_PW);
-  while (WiFi.status() != WL_CONNECTED && count < 6000) {
+  while (WiFi.status() != WL_CONNECTED && count < 150) {
     delay(500);
     Serial.println(count);
     count++;
@@ -236,6 +243,7 @@ void get_time() {
   int mn =   time_str.substring(14, 16).toInt();
   int sec =  time_str.substring(17, 19).toInt();
   setTime(hr, mn, sec, dy, mnth, yr);
+  today = now();
 }
 
 String get_request(String host, String path, String params) {
@@ -247,7 +255,6 @@ String get_request(String host, String path, String params) {
     unsigned long count = millis();
     while (client.connected()) {
       String line = client.readStringUntil('\n');
-      Serial.println(line);
       if (line == "\r") {
         break;
       }
@@ -258,10 +265,7 @@ String get_request(String host, String path, String params) {
     while (client.available()) {
       op += (char)client.read();
     }
-    Serial.println(op);
     client.stop();
-    Serial.println();
-    Serial.println("-----------");
     return op;
   } else {
     Serial.println("connection failed");
