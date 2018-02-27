@@ -1,41 +1,54 @@
 #include <U8g2lib.h>
 #include <Time.h>
 #define DELAY 1000
+#include <ESP8266WiFi.h>
+#include "secrets.h"
 
-// constants
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, 19, 18);
-const int BUTTON_PIN = 11;
-const int PHOTOCELL_PIN = 14;
+// hardware constants
+const int SCL_PIN = 5;
+const int SDA_PIN = 4;
+const int BUTTON_PIN = 2;
+const int PHOTOCELL_PIN = A0;
 const int SCREEN_WIDTH = 128;
 const int SCREEN_HEIGHT = 64;
-const int LIGHT_THRESHOLD = 800;
+const int LIGHT_MIN = 350;
+const int LIGHT_THRESHOLD = 600;
+const int LIGHT_MAX = 800;
 const int BUFFER_SIZE = 30;
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, SCL_PIN, SDA_PIN);
 
+// wifi constants
+const int response_timeout = 6000;
+const String LOCATION = "America/New_York";
+const int MIN_BETWEEN_FETCHES = 60;
+time_t t_last_fetch;
+const int WIFI_STATE_IDLE = 0;
+const int WIFI_STATE_FETCHING = 1;
+int wifi_state = WIFI_STATE_FETCHING;
+
+// light constants
 time_t t_received;
 time_t t_last_light;
 int photocell_reads[BUFFER_SIZE];
-int avg_photocell_reading;
+int avg_photocell_reading = 0;
 int read_index = 0;
+const int LIGHT_STATE_IDLE = 0;
+const int LIGHT_STATE_COUNTING = 1;
+int light_state = LIGHT_STATE_IDLE;
+
+// button/screen constants
 int button_reading;
-
-const int STATE_IDLE = 0;
-const int STATE_COUNTING = 1;
-int light_state;
-
 const int SCREEN_OFF = 0;
 const int SCREEN_ON = 1;
 const int SCREEN_OFF_BUTTON_PUSHED = 2;
 const int SCREEN_ON_BUTTON_PUSHED = 3;
-int screen_state;
+int screen_state = SCREEN_ON;
 
 void setup() {
-  delay(3000);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   oled.begin();
   Serial.begin(115200);
-  light_state = STATE_IDLE;
-  screen_state = SCREEN_ON;
-  avg_photocell_reading = 0;
+  setup_wifi();
 }
 
 void loop() {
@@ -46,22 +59,21 @@ void loop() {
                             8,
                             read_index
                           );
-  Serial.println(avg_photocell_reading);
   button_reading = digitalRead(BUTTON_PIN);
 
   switch (light_state) {
-    case STATE_IDLE:
+    case LIGHT_STATE_IDLE:
       if (avg_photocell_reading > LIGHT_THRESHOLD) {
         t_last_light = now();
-        light_state = STATE_COUNTING;
+        light_state = LIGHT_STATE_COUNTING;
       }
       break;
-    case STATE_COUNTING:
+    case LIGHT_STATE_COUNTING:
       unsigned long delta_light = now() - t_last_light;
       t_received += delta_light;
       t_last_light = now();
       if (avg_photocell_reading < LIGHT_THRESHOLD) {
-        light_state = STATE_IDLE;
+        light_state = LIGHT_STATE_IDLE;
       }
       break;
   }
@@ -91,6 +103,18 @@ void loop() {
       break;
   }
 
+  switch (wifi_state) {
+    case WIFI_STATE_IDLE:
+      if (minute(now() - t_last_fetch) > MIN_BETWEEN_FETCHES) {
+        wifi_state = WIFI_STATE_FETCHING;
+      }
+      break;
+    case WIFI_STATE_FETCHING:
+      get_time();
+      wifi_state = WIFI_STATE_IDLE;
+      break;
+  }
+
   drawHeader();
   drawBody();
   drawFooter(avg_photocell_reading);
@@ -117,9 +141,9 @@ void drawBody() {
 }
 
 /**
- * Averaging filter from 6.08!
- * https://iesc-s2.mit.edu/608/spring18
- */
+   Averaging filter from 6.08!
+   https://iesc-s2.mit.edu/608/spring18
+*/
 int averaging_filter(int input, int stored_values[BUFFER_SIZE], int order, int &index) {
   stored_values[index] = input;
   int out = 0;
@@ -146,10 +170,10 @@ void drawFooter(int reading) {
   int bar_y = SCREEN_HEIGHT - bar_height - padding;
   int glyph_x = padding;
   int glyph_y = SCREEN_HEIGHT - padding;
-  int bar_scaled_width = map(reading, 210, 1023, 0, bar_width);
+  int bar_scaled_width = map(reading, LIGHT_MIN, LIGHT_MAX, 0, bar_width);
 
   int symbol;
-  if (light_state == STATE_COUNTING) {
+  if (light_state == LIGHT_STATE_COUNTING) {
     symbol = 0x2600;
   }
   else {
@@ -162,3 +186,87 @@ void drawFooter(int reading) {
   oled.drawBox(bar_x, bar_y, bar_scaled_width, bar_height);
 }
 
+void setup_wifi() {
+  oled.clearBuffer();
+  oled.setFont(u8g2_font_t0_11_tr);
+  oled.drawStr(0, 40, "CONNECTING TO WIFI");
+  oled.setFont(u8g2_font_unifont_t_symbols);
+  oled.drawGlyph(109, 40, 0x23f3); // wifi??
+  oled.sendBuffer();
+  int count = 0;
+  WiFi.disconnect();
+  WiFi.begin(MY_SSID, MY_PW);
+  while (WiFi.status() != WL_CONNECTED && count < 6000) {
+    delay(500);
+    Serial.println(count);
+    count++;
+  }
+  delay(2000);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Wifi connected!");
+    oled.clearBuffer();
+    oled.setFont(u8g2_font_t0_17_tr);
+    oled.drawStr(0, 40, "Connected!");
+    oled.setFont(u8g2_font_unifont_t_symbols);
+    oled.drawGlyph(107, 40, 0x2605);
+    oled.sendBuffer();
+  } else {
+    Serial.println(WiFi.status());
+    ESP.restart();
+  }
+}
+
+void get_time() {
+  String host = "api.timezonedb.com";
+  String path = "v2/get-time-zone";
+  String params = "?key=" + String(API_KEY) +
+                  "&by=zone" +
+                  "&zone=" + LOCATION +
+                  "&fields=formatted";
+  String time_str = get_request(host, path, params);
+  String prefix = "<formatted>";
+  String suffix = "</formatted>";
+  int time_start = time_str.indexOf(prefix) + prefix.length();
+  int time_end = time_str.indexOf(suffix);
+  time_str = time_str.substring(time_start, time_end);
+  int yr =   time_str.substring(0, 4).toInt();
+  int mnth = time_str.substring(5, 7).toInt();
+  int dy =   time_str.substring(8, 10).toInt();
+  int hr =   time_str.substring(11, 13).toInt();
+  int mn =   time_str.substring(14, 16).toInt();
+  int sec =  time_str.substring(17, 19).toInt();
+  setTime(hr, mn, sec, dy, mnth, yr);
+}
+
+String get_request(String host, String path, String params) {
+  WiFiClient client;
+  if (client.connect(host, 80)) {
+    client.println("GET http://" + host + "/" + path + params + " HTTP/1.1");
+    client.println("Host: " + host);
+    client.print("\r\n\r\n");
+    unsigned long count = millis();
+    while (client.connected()) {
+      String line = client.readStringUntil('\n');
+      Serial.println(line);
+      if (line == "\r") {
+        break;
+      }
+      if (millis() - count > response_timeout) break;
+    }
+    count = millis();
+    String op; //create empty String object
+    while (client.available()) {
+      op += (char)client.read();
+    }
+    Serial.println(op);
+    client.stop();
+    Serial.println();
+    Serial.println("-----------");
+    return op;
+  } else {
+    Serial.println("connection failed");
+    Serial.println("wait 0.5 sec...");
+    client.stop();
+    delay(500);
+  }
+}
