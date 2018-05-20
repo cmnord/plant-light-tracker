@@ -38,6 +38,8 @@ const int LIGHT_STATE_COUNTING = 1;
 int light_state = LIGHT_STATE_IDLE;
 
 // button/screen constants
+time_t t_last_on;
+const int OLED_ON_SEC = 10;
 int button_reading;
 const int SCREEN_OFF = 0;
 const int SCREEN_ON = 1;
@@ -81,7 +83,11 @@ void loop() {
 
   switch (screen_state) {
     case SCREEN_ON:
-      if (!button_reading) {
+      if (second(now() - t_last_on) > OLED_ON_SEC) {
+        oled.setPowerSave(1);
+        screen_state = SCREEN_OFF;
+      }
+      else if (!button_reading) {
         screen_state = SCREEN_ON_BUTTON_PUSHED;
       }
       break;
@@ -99,6 +105,7 @@ void loop() {
     case SCREEN_OFF_BUTTON_PUSHED:
       if (button_reading) {
         oled.setPowerSave(0);
+        t_last_on = now();
         screen_state = SCREEN_ON;
       }
       break;
