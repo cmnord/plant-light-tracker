@@ -1,10 +1,11 @@
 #include <U8g2lib.h>
-#include <Time.h>
-#define DELAY 1000
+#include <TimeLib.h>
 #include <ESP8266WiFi.h>
+#include <Wire.h>
 #include "secrets.h"
 
 // hardware constants
+#define DELAY 1000
 const int SCL_PIN = 5;
 const int SDA_PIN = 4;
 const int BUTTON_PIN = 2;
@@ -15,7 +16,8 @@ const int LIGHT_MIN = 0;
 const int LIGHT_THRESHOLD = 600;
 const int LIGHT_MAX = 800;
 const int BUFFER_SIZE = 30;
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, SCL_PIN, SDA_PIN);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0); //, U8X8_PIN_NONE, SCL_PIN, SDA_PIN);
+
 
 // wifi constants
 const int response_timeout = 6000;
