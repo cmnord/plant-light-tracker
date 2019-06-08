@@ -275,6 +275,9 @@ String get_request(String host, String path, String params) {
       op += (char)client.read();
     }
     client.stop();
+    Serial.println("Got response:");
+    Serial.println(op);
+    Serial.println("-------------------------");
     return op;
   } else {
     Serial.println("connection failed");
