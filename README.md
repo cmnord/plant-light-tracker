@@ -35,4 +35,4 @@ Made for [MakeMIT][makemit] 2018.
 [esp8266]: https://github.com/esp8266/Arduino
 [u8g2]: https://github.com/olikraus/u8g2
 [time]: https://github.com/PaulStoffregen/Time
-[license]: https://clairenord.com/mitlicense
+[license]: https://cnord.mit-license.org/
